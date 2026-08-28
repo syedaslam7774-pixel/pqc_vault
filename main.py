@@ -1,11 +1,11 @@
 import json
 import os
+import re
 import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, List
 from engine import HybridVaultEngine
 
 app = FastAPI(title="Post-Quantum Cross-Device Notepad")
@@ -32,6 +32,24 @@ def load_db():
 def save_db(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+def clean_and_parse_master_key(raw_input: str) -> dict:
+    """Extracts valid JSON keypair even if surrounded by unwanted text/labels."""
+    if not raw_input:
+        raise ValueError("Master key is empty.")
+    
+    # Extract outermost JSON object if extra text surrounds it
+    match = re.search(r'\{.*\}', raw_input, re.DOTALL)
+    clean_str = match.group(0) if match else raw_input.strip()
+    
+    try:
+        keys = json.loads(clean_str)
+        if "x25519_priv" in keys and "ml_kem_priv" in keys:
+            return keys
+    except Exception:
+        pass
+    
+    raise ValueError("Could not find valid keypair inside the provided master key text.")
 
 class CheckUserReq(BaseModel):
     username: str
@@ -72,7 +90,6 @@ def register_user(req: RegisterReq):
 
     keys = HybridVaultEngine.generate_user_keypair()
 
-    # Quantum-encrypt the password using the user's public keys
     encrypted_pass_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=keys["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=keys["public_keys"]["ml_kem_pub"],
@@ -100,7 +117,7 @@ def login_user(req: LoginReq):
         raise HTTPException(status_code=404, detail="User not found.")
 
     try:
-        priv_keys = json.loads(req.master_key)
+        priv_keys = clean_and_parse_master_key(req.master_key)
         decrypted_pass_bytes = HybridVaultEngine.decrypt_payload(
             user_x25519_priv_hex=priv_keys["x25519_priv"],
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
@@ -108,12 +125,11 @@ def login_user(req: LoginReq):
         )
         stored_password = decrypted_pass_bytes.decode("utf-8")
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Master Key.")
+        raise HTTPException(status_code=400, detail="Invalid Master Key provided.")
 
     if stored_password != req.password:
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
-    # Decrypt all notes stored for this user
     decrypted_notes = []
     user_notes = user.get("notes", {})
     for note_id, note_data in user_notes.items():
@@ -146,24 +162,21 @@ def save_note(req: SaveNoteReq):
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    # Validate credentials
     try:
-        priv_keys = json.loads(req.master_key)
+        priv_keys = clean_and_parse_master_key(req.master_key)
         decrypted_pass = HybridVaultEngine.decrypt_payload(
             user_x25519_priv_hex=priv_keys["x25519_priv"],
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
             packet=user["encrypted_password_packet"]
         ).decode("utf-8")
     except Exception:
-        raise HTTPException(status_code=400, detail="Master key invalid.")
+        raise HTTPException(status_code=400, detail="Decryption error.")
 
     if decrypted_pass != req.password:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Serialize title and text together
     payload_json = json.dumps({"title": req.title, "content": req.content})
 
-    # Hybrid Encrypt using ML-KEM-768 + Curve25519
     encrypted_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=user["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=user["public_keys"]["ml_kem_pub"],
