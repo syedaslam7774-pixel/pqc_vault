@@ -21,6 +21,7 @@ class HybridVaultEngine:
                 "x25519_pub": x_pub.public_bytes_raw().hex(),
                 "ml_kem_pub": pq_encap_key.hex()
             },
+            # Returns the raw, un-salted master keys to be handed to the user
             "private_keys": {
                 "x25519_priv": x_priv.private_bytes_raw().hex(),
                 "ml_kem_priv": pq_decap_key.hex()
@@ -40,15 +41,18 @@ class HybridVaultEngine:
         # 2. Quantum Encapsulation
         pq_shared, pq_ciphertext = ML_KEM_768.encaps(recip_mlkem)
 
-        # 3. Hybrid Key Derivation Function (HKDF)
+        # 3. Generate a unique 32-byte cryptographic salt for DB storage
+        salt = os.urandom(32)
+
+        # 4. Hybrid Key Derivation Function (HKDF) with Salt
         session_key = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=None,
+            salt=salt,
             info=b"pqc-vault-user-v1"
         ).derive(classical_shared + pq_shared)
 
-        # 4. AES-256-GCM Encryption
+        # 5. AES-256-GCM Encryption
         aesgcm = AESGCM(session_key)
         nonce = os.urandom(12)
         ciphertext = aesgcm.encrypt(nonce, plaintext, None)
@@ -56,6 +60,7 @@ class HybridVaultEngine:
         return {
             "ephemeral_x25519_pub": ephemeral_x_pub.public_bytes_raw().hex(),
             "pq_ciphertext": pq_ciphertext.hex(),
+            "salt": salt.hex(),
             "nonce": nonce.hex(),
             "ciphertext": ciphertext.hex()
         }
@@ -72,14 +77,17 @@ class HybridVaultEngine:
         pq_ciphertext = bytes.fromhex(packet["pq_ciphertext"])
         pq_shared = ML_KEM_768.decaps(pq_decap_key, pq_ciphertext)
 
-        # 3. Derive Symmetric Session Key
+        # 3. Extract the salt from the stored DB packet (fallback to None if legacy unsalted packet)
+        salt_bytes = bytes.fromhex(packet["salt"]) if "salt" in packet and packet["salt"] else None
+
+        # 4. Derive Symmetric Session Key using the stored salt
         session_key = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=None,
+            salt=salt_bytes,
             info=b"pqc-vault-user-v1"
         ).derive(classical_shared + pq_shared)
 
-        # 4. AES-256-GCM Decryption
+        # 5. AES-256-GCM Decryption
         aesgcm = AESGCM(session_key)
         return aesgcm.decrypt(bytes.fromhex(packet["nonce"]), bytes.fromhex(packet["ciphertext"]), None)
