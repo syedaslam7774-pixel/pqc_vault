@@ -67,18 +67,21 @@ class DeleteNoteReq(BaseModel):
     master_key: str
     note_id: str
 
-# --- Health & Root Endpoint ---
+# --- Health & Root Endpoints ---
 
 @app.get("/")
+@app.get("/api")
 def root():
     return {"status": "online", "message": "PQC Vault API is running"}
 
 # --- API Endpoints ---
 
+@app.post("/check-user")
 @app.post("/api/check-user")
 def check_user(req: CheckUserReq):
     return {"exists": db.user_exists(req.username)}
 
+@app.post("/register")
 @app.post("/api/register")
 def register_user(req: RegisterReq):
     if db.user_exists(req.username):
@@ -110,6 +113,7 @@ def register_user(req: RegisterReq):
         "master_key": json.dumps(keys["private_keys"])
     }
 
+@app.post("/login")
 @app.post("/api/login")
 def login_user(req: LoginReq):
     user = db.get_user(req.username)
@@ -155,6 +159,7 @@ def login_user(req: LoginReq):
         "notes": decrypted_notes
     }
 
+@app.post("/save-note")
 @app.post("/api/save-note")
 def save_note(req: SaveNoteReq):
     user = db.get_user(req.username)
@@ -194,6 +199,7 @@ def save_note(req: SaveNoteReq):
 
     return {"status": "saved", "note_id": req.note_id}
 
+@app.post("/delete-note")
 @app.post("/api/delete-note")
 def delete_note(req: DeleteNoteReq):
     user = db.get_user(req.username)
