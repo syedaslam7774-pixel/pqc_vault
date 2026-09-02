@@ -67,7 +67,7 @@ class DeleteNoteReq(BaseModel):
     master_key: str
     note_id: str
 
-# --- Health & Root Endpoints ---
+# --- Health Endpoints ---
 
 @app.get("/")
 @app.get("/api")

@@ -3,392 +3,425 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Post-Quantum Notepad</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Quantum Vault Notepad</title>
   <style>
-    body { background-color: #0b0f19; color: #c9d1d9; font-family: system-ui, -apple-system, sans-serif; }
-    .mono { font-family: ui-monospace, Menlo, Monaco, Consolas, monospace; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      background-color: #0d1117;
+      color: #c9d1d9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background-color: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 30px;
+      width: 100%;
+      max-width: 480px;
+    }
+    h1 {
+      font-size: 1.4rem;
+      text-align: center;
+      margin-bottom: 4px;
+      color: #58a6ff;
+    }
+    .subtitle {
+      font-size: 0.8rem;
+      text-align: center;
+      color: #8b949e;
+      margin-bottom: 24px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #30363d;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .tab-btn.active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+      color: #8b949e;
+      text-transform: uppercase;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background-color: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+    button.primary-btn {
+      width: 100%;
+      padding: 12px;
+      background-color: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #ffffff;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button.primary-btn:hover {
+      background-color: #2ea043;
+    }
+    .hidden {
+      display: none !important;
+    }
+    #keyModal {
+      background-color: #0d1117;
+      border: 1px solid #da3633;
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    #keyModal p {
+      font-size: 0.8rem;
+      color: #f85149;
+      margin-bottom: 8px;
+    }
+    #keyDisplay {
+      width: 100%;
+      height: 80px;
+      background: #161b22;
+      color: #79c0ff;
+      font-family: monospace;
+      font-size: 0.75rem;
+      margin-bottom: 10px;
+    }
+    .notes-list {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .note-item {
+      padding: 10px;
+      border-bottom: 1px solid #30363d;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+    }
+    .note-item:hover {
+      background: #21262d;
+    }
+    .danger-btn {
+      background: #da3633;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-3 md:p-6">
+<body>
 
-  <!-- AUTHENTICATION CARD -->
-  <div id="authContainer" class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
-    <div class="text-center mb-6">
-      <h1 class="text-xl font-bold text-cyan-400">Quantum Vault Notepad</h1>
-      <p class="text-xs text-gray-400 mt-1">NIST ML-KEM-768 Encrypted Storage</p>
+  <div class="card" id="authSection">
+    <h1>Quantum Vault Notepad</h1>
+    <div class="subtitle">NIST ML-KEM-768 Encrypted Storage</div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabLoginBtn" onclick="switchAuthTab('login')">User</button>
+      <button class="tab-btn" id="tabRegBtn" onclick="switchAuthTab('register')">+ New User</button>
     </div>
 
-    <!-- TABS: USER vs + NEW USER -->
-    <div class="flex border-b border-gray-800 mb-6" id="tabContainer">
-      <button id="tabLogin" onclick="setMode('login')" class="flex-1 pb-2.5 font-bold text-sm text-cyan-400 border-b-2 border-cyan-400 transition">
-        User
-      </button>
-      <button id="tabRegister" onclick="setMode('register')" class="flex-1 pb-2.5 font-bold text-sm text-gray-400 hover:text-gray-200 transition">
-        + New User
-      </button>
+    <!-- Login Form -->
+    <div id="loginForm">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="username" />
+
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••" />
+
+      <label>Master Key (JSON)</label>
+      <textarea id="loginKey" placeholder='{"x25519_priv": "...", "ml_kem_priv": "..."}'></textarea>
+
+      <button class="primary-btn" onclick="handleLogin()">Login</button>
     </div>
 
-    <!-- FORM SECTION -->
-    <div id="formSection" class="space-y-4">
-      <div>
-        <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Username</label>
-        <input id="userInput" type="text" oninput="checkDeviceState()" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter username" />
-      </div>
+    <!-- Registration Form -->
+    <div id="regForm" class="hidden">
+      <label>Username</label>
+      <input type="text" id="regUser" placeholder="username" />
 
-      <div>
-        <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Password</label>
-        <input id="passInput" type="password" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter password" />
-      </div>
+      <label>Password</label>
+      <input type="password" id="regPass" placeholder="••••" />
 
-      <!-- MASTER KEY FIELD (Hidden by default; only shown if username has NO key saved on this device) -->
-      <div id="masterKeyContainer" class="hidden">
-        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Enter the master key</label>
-        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder="Enter the master key"></textarea>
-      </div>
-
-      <button id="actionBtn" onclick="handleSubmit()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg">
-        Open Notepad
-      </button>
-    </div>
-
-    <!-- NEW USER KEY MODAL -->
-    <div id="keyModal" class="hidden mt-6 bg-black/80 border border-emerald-800 rounded-xl p-4 space-y-3">
-      <div class="text-xs font-semibold text-emerald-400">ACCOUNT CREATED SUCCESSFULLY</div>
-      <p class="text-xs text-gray-300">Here is your <b>Master Key</b>. If you log in on another device, paste it once.</p>
-      <textarea id="createdKeyBox" rows="4" readonly class="w-full bg-black border border-gray-800 rounded p-2 text-xs mono text-cyan-300"></textarea>
-      <button onclick="copyAndProceed()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-2.5 rounded font-medium transition">
-        Copy Key & Open Notepad
-      </button>
+      <button class="primary-btn" onclick="handleRegister()">Register New Account</button>
     </div>
   </div>
 
-  <!-- NOTEPAD WORKSPACE -->
-  <div id="notepadScreen" class="hidden w-full max-w-5xl h-[85vh] bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-    
-    <!-- HEADER -->
-    <div class="flex items-center justify-between px-6 py-3.5 border-b border-gray-800 bg-gray-950/60">
-      <div class="flex items-center space-x-3">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="text-xs text-gray-400">Vault User:</span>
-        <span id="activeUser" class="text-sm font-semibold text-cyan-400"></span>
-      </div>
-      <button onclick="logout()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3.5 py-1.5 rounded-lg border border-gray-700 transition">
-        Logout
-      </button>
+  <!-- Master Key Backup Screen -->
+  <div class="card hidden" id="backupSection">
+    <h1>Account Created</h1>
+    <div class="subtitle">Save Your Post-Quantum Private Key</div>
+    <div id="keyModal">
+      <p>WARNING: If you lose this key, your encrypted notes cannot be recovered!</p>
+      <textarea id="keyDisplay" readonly></textarea>
+      <button class="primary-btn" style="background-color: #1f6feb;" onclick="proceedToVault()">I Saved It &rarr; Continue to Vault</button>
+    </div>
+  </div>
+
+  <!-- Notepad App View -->
+  <div class="card hidden" id="vaultSection" style="max-width: 650px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h1 style="text-align: left;" id="vaultUserTitle">Vault</h1>
+      <button class="danger-btn" onclick="handleLogout()">Logout</button>
     </div>
 
-    <!-- BODY -->
-    <div class="flex flex-1 overflow-hidden">
-      <!-- SIDEBAR -->
-      <div class="w-1/3 md:w-1/4 border-r border-gray-800 flex flex-col bg-gray-950/40">
-        <div class="p-3 border-b border-gray-800">
-          <button onclick="createNewNote()" class="w-full bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 font-medium py-2 rounded-lg text-xs transition flex items-center justify-center space-x-1.5">
-            <span>+</span><span>New Note</span>
-          </button>
-        </div>
-        <div id="notesList" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
-      </div>
+    <div class="notes-list" id="notesContainer"></div>
 
-      <!-- EDITOR -->
-      <div class="flex-1 flex flex-col bg-gray-900 p-4 md:p-6 overflow-hidden">
-        <div class="flex items-center justify-between mb-3 gap-2">
-          <input id="noteTitle" type="text" class="flex-1 bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-base font-semibold text-white focus:outline-none focus:border-cyan-500" placeholder="Note Title..." />
-          <button onclick="saveCurrentNote()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 rounded-lg text-xs font-medium transition shadow-md">
-            Save Note
-          </button>
-          <button onclick="deleteCurrentNote()" class="bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 px-3 py-2 rounded-lg text-xs transition">
-            Delete
-          </button>
-        </div>
+    <label>Note Title</label>
+    <input type="text" id="noteTitle" placeholder="Title" />
 
-        <textarea id="noteText" oninput="updateStats()" class="flex-1 w-full bg-black/50 border border-gray-800 rounded-xl p-4 text-sm text-gray-100 focus:outline-none focus:border-cyan-500 resize-none font-mono leading-relaxed" placeholder="Type your secure notes here..."></textarea>
+    <label>Note Content</label>
+    <textarea id="noteContent" style="min-height: 180px;" placeholder="Write your private note..."></textarea>
 
-        <div class="flex items-center justify-between pt-3 text-[11px] text-gray-500">
-          <span id="saveStatus">Encrypted with NIST ML-KEM-768</span>
-          <span id="wordStats">0 words | 0 characters</span>
-        </div>
-      </div>
+    <div style="display: flex; gap: 10px;">
+      <button class="primary-btn" onclick="handleSaveNote()">Save Note</button>
+      <button class="tab-btn" style="border: 1px solid #30363d;" onclick="resetNoteEditor()">+ New</button>
     </div>
   </div>
 
   <script>
-    const API = "";
-    let currentMode = "login";
-    let sessionUser = "";
-    let sessionPass = "";
-    let sessionKey = "";
-    
-    let notes = [];
-    let currentNoteId = null;
+    let activeUser = "";
+    let activePass = "";
+    let activeKey = "";
+    let activeNoteId = null;
 
-    function setMode(mode) {
-      currentMode = mode;
-      const tabLogin = document.getElementById("tabLogin");
-      const tabRegister = document.getElementById("tabRegister");
-      const btn = document.getElementById("actionBtn");
-      const masterKeyBox = document.getElementById("masterKeyContainer");
-
-      if (mode === "register") {
-        tabRegister.className = "flex-1 pb-2.5 font-bold text-sm text-cyan-400 border-b-2 border-cyan-400 transition";
-        tabLogin.className = "flex-1 pb-2.5 font-bold text-sm text-gray-400 hover:text-gray-200 transition";
-        btn.innerText = "Register New Account";
-        btn.className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg";
-        masterKeyBox.classList.add("hidden");
-      } else {
-        tabLogin.className = "flex-1 pb-2.5 font-bold text-sm text-cyan-400 border-b-2 border-cyan-400 transition";
-        tabRegister.className = "flex-1 pb-2.5 font-bold text-sm text-gray-400 hover:text-gray-200 transition";
-        btn.innerText = "Open Notepad";
-        btn.className = "w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg";
-        checkDeviceState();
-      }
+    function switchAuthTab(tab) {
+      document.getElementById('tabLoginBtn').classList.toggle('active', tab === 'login');
+      document.getElementById('tabRegBtn').classList.toggle('active', tab === 'register');
+      document.getElementById('loginForm').classList.toggle('hidden', tab !== 'login');
+      document.getElementById('regForm').classList.toggle('hidden', tab !== 'register');
     }
 
-    // Controls visibility of "Enter the master key" field
-    function checkDeviceState() {
-      if (currentMode === "register") return;
-      const username = document.getElementById("userInput").value.trim();
-      const container = document.getElementById("masterKeyContainer");
+    async function handleRegister() {
+      const username = document.getElementById('regUser').value.trim();
+      const password = document.getElementById('regPass').value;
 
-      if (!username) {
-        container.classList.add("hidden");
+      if (!username || !password) {
+        alert("Please provide both username and password.");
         return;
       }
 
-      // Check if this device already has the master key for this username
-      const savedKey = localStorage.getItem(`vault_master_key_${username}`);
-      if (savedKey) {
-        // Already saved -> DO NOT show master key field
-        container.classList.add("hidden");
-      } else {
-        // Not saved -> SHOW "Enter the master key"
-        container.classList.remove("hidden");
-      }
-    }
-
-    // Auto-cleans unwanted text from copied master keys
-    function cleanMasterKey(raw) {
-      if (!raw) return "";
-      const match = raw.match(/\{[\s\S]*\}/);
-      return match ? match[0].trim() : raw.trim();
-    }
-
-    async function handleSubmit() {
-      const username = document.getElementById("userInput").value.trim();
-      const password = document.getElementById("passInput").value.trim();
-      if (!username || !password) return alert("Please enter both username and password.");
-
-      if (currentMode === "register") {
-        const regRes = await fetch(`${API}/api/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-        const regData = await regRes.json();
+        const data = await res.json();
 
-        if (!regRes.ok) return alert(regData.detail || "Registration failed");
-
-        // Save key locally on this primary registration device
-        localStorage.setItem(`vault_master_key_${username}`, regData.master_key);
-        sessionUser = username;
-        sessionPass = password;
-        sessionKey = regData.master_key;
-
-        document.getElementById("formSection").classList.add("hidden");
-        document.getElementById("tabContainer").classList.add("hidden");
-        document.getElementById("createdKeyBox").value = regData.master_key;
-        document.getElementById("keyModal").classList.remove("hidden");
-      } else {
-        // 1. First check if device already saved the key
-        let masterKey = localStorage.getItem(`vault_master_key_${username}`);
-        
-        // 2. If not saved, read from the "Enter the master key" input
-        if (!masterKey) {
-          masterKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
+        if (!res.ok) {
+          alert(data.detail || "Registration failed");
+          return;
         }
 
-        if (!masterKey) {
-          return alert("Please enter the master key in the box to authorize this device.");
-        }
+        // Retain credentials in memory so saving notes works immediately
+        activeUser = username;
+        activePass = password;
+        activeKey = data.master_key;
 
-        const loginRes = await fetch(`${API}/api/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password, master_key: masterKey })
+        // Show Master Key for backup
+        document.getElementById('authSection').classList.add('hidden');
+        document.getElementById('backupSection').classList.remove('hidden');
+        document.getElementById('keyDisplay').value = data.master_key;
+      } catch (err) {
+        alert("Error connecting to server: " + err.message);
+      }
+    }
+
+    function proceedToVault() {
+      document.getElementById('backupSection').classList.add('hidden');
+      document.getElementById('vaultSection').classList.remove('hidden');
+      document.getElementById('vaultUserTitle').innerText = activeUser + "'s Vault";
+      loadNotes([]);
+    }
+
+    async function handleLogin() {
+      const username = document.getElementById('loginUser').value.trim();
+      const password = document.getElementById('loginPass').value;
+      const master_key = document.getElementById('loginKey').value.trim();
+
+      if (!username || !password || !master_key) {
+        alert("Please enter username, password, and master key.");
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, master_key })
         });
-        const loginData = await loginRes.json();
+        const data = await res.json();
 
-        if (loginRes.ok) {
-          // Store it so it will never ask for the master key again on this device
-          localStorage.setItem(`vault_master_key_${username}`, masterKey);
-          sessionUser = username;
-          sessionPass = password;
-          sessionKey = masterKey;
-          notes = loginData.notes || [];
-          openNotepad(username);
-        } else {
-          alert(loginData.detail || "Authentication Failed. Please check your password or master key.");
+        if (!res.ok) {
+          alert(data.detail || "Login failed");
+          return;
         }
+
+        activeUser = username;
+        activePass = password;
+        activeKey = master_key;
+
+        document.getElementById('authSection').classList.add('hidden');
+        document.getElementById('vaultSection').classList.remove('hidden');
+        document.getElementById('vaultUserTitle').innerText = activeUser + "'s Vault";
+        loadNotes(data.notes || []);
+      } catch (err) {
+        alert("Connection error: " + err.message);
       }
     }
 
-    function copyAndProceed() {
-      const pureKey = document.getElementById("createdKeyBox").value.trim();
-      navigator.clipboard.writeText(pureKey);
-      alert("Master Key copied to clipboard!");
-      notes = [];
-      openNotepad(sessionUser);
-    }
-
-    function openNotepad(username) {
-      document.getElementById("authContainer").classList.add("hidden");
-      document.getElementById("notepadScreen").classList.remove("hidden");
-      document.getElementById("notepadScreen").classList.add("flex");
-      document.getElementById("activeUser").innerText = username;
-
-      if (notes.length === 0) {
-        createNewNote();
-      } else {
-        selectNote(notes[0].id);
-      }
-      renderNotesList();
-    }
-
-    function renderNotesList() {
-      const container = document.getElementById("notesList");
+    let loadedNotes = [];
+    function loadNotes(notes) {
+      loadedNotes = notes;
+      const container = document.getElementById('notesContainer');
       container.innerHTML = "";
-
-      notes.forEach(note => {
-        const item = document.createElement("div");
-        const isActive = note.id === currentNoteId;
-        item.className = `p-2.5 rounded-lg cursor-pointer transition text-xs flex flex-col ${
-          isActive ? "bg-cyan-950/60 border border-cyan-800 text-cyan-300" : "bg-black/30 hover:bg-gray-800 text-gray-400 border border-transparent"
-        }`;
-        item.onclick = () => selectNote(note.id);
-
-        const titleText = note.title || "Untitled Note";
-        const previewText = note.content ? note.content.substring(0, 30) + "..." : "Empty note...";
-
-        item.innerHTML = `
-          <span class="font-semibold text-white truncate">${titleText}</span>
-          <span class="text-[11px] text-gray-500 truncate mt-0.5">${previewText}</span>
-        `;
-        container.appendChild(item);
+      if (notes.length === 0) {
+        container.innerHTML = '<div style="padding: 10px; color: #8b949e; text-align: center;">No notes saved yet</div>';
+        return;
+      }
+      notes.forEach((note) => {
+        const div = document.createElement('div');
+        div.className = 'note-item';
+        div.innerHTML = `<span><strong>${note.title}</strong></span> <button class="danger-btn" onclick="handleDeleteNote('${note.id}', event)">Delete</button>`;
+        div.onclick = () => {
+          activeNoteId = note.id;
+          document.getElementById('noteTitle').value = note.title;
+          document.getElementById('noteContent').value = note.content;
+        };
+        container.appendChild(div);
       });
     }
 
-    function createNewNote() {
-      const newId = "note_" + Date.now();
-      const newNote = { id: newId, title: "Untitled Note", content: "", updated_at: Date.now() };
-      notes.unshift(newNote);
-      selectNote(newId);
+    function resetNoteEditor() {
+      activeNoteId = null;
+      document.getElementById('noteTitle').value = "";
+      document.getElementById('noteContent').value = "";
     }
 
-    function selectNote(id) {
-      currentNoteId = id;
-      const note = notes.find(n => n.id === id);
-      if (note) {
-        document.getElementById("noteTitle").value = note.title || "";
-        document.getElementById("noteText").value = note.content || "";
-        updateStats();
-        document.getElementById("saveStatus").innerText = "Loaded from vault.";
-        document.getElementById("saveStatus").className = "text-gray-400";
+    async function handleSaveNote() {
+      const title = document.getElementById('noteTitle').value.trim() || "Untitled Note";
+      const content = document.getElementById('noteContent').value;
+      const note_id = activeNoteId || ("note_" + Date.now());
+
+      if (!activeUser || !activePass || !activeKey) {
+        alert("Session lost. Please log in again.");
+        return;
       }
-      renderNotesList();
-    }
-
-    function updateStats() {
-      const text = document.getElementById("noteText").value;
-      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      const chars = text.length;
-      document.getElementById("wordStats").innerText = `${words} words | ${chars} characters`;
-    }
-
-    async function saveCurrentNote() {
-      if (!currentNoteId) return;
-      const title = document.getElementById("noteTitle").value.trim() || "Untitled Note";
-      const content = document.getElementById("noteText").value;
-      const status = document.getElementById("saveStatus");
-
-      status.innerText = "Encrypting with Lattice Cryptography...";
-      status.className = "text-cyan-400";
 
       try {
-        const res = await fetch(`${API}/api/save-note`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/save-note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            username: sessionUser,
-            password: sessionPass,
-            master_key: sessionKey,
-            note_id: currentNoteId,
+            username: activeUser,
+            password: activePass,
+            master_key: activeKey,
+            note_id: note_id,
             title: title,
             content: content
           })
         });
+        const data = await res.json();
 
-        if (res.ok) {
-          status.innerText = "Saved & Quantum-Locked across all devices!";
-          status.className = "text-emerald-400";
-
-          const current = notes.find(n => n.id === currentNoteId);
-          if (current) {
-            current.title = title;
-            current.content = content;
-          }
-          renderNotesList();
-        } else {
-          status.innerText = "Failed to save.";
-          status.className = "text-rose-400";
+        if (!res.ok) {
+          alert("Failed to save: " + (data.detail || "Server error"));
+          return;
         }
-      } catch (e) {
-        status.innerText = "Connection error.";
-        status.className = "text-rose-400";
+
+        alert("Note saved securely!");
+        activeNoteId = note_id;
+
+        const existing = loadedNotes.find(n => n.id === note_id);
+        if (existing) {
+          existing.title = title;
+          existing.content = content;
+        } else {
+          loadedNotes.push({ id: note_id, title, content });
+        }
+        loadNotes(loadedNotes);
+      } catch (err) {
+        alert("Error saving: " + err.message);
       }
     }
 
-    async function deleteCurrentNote() {
-      if (!currentNoteId) return;
-      if (!confirm("Are you sure you want to delete this encrypted note?")) return;
+    async function handleDeleteNote(noteId, event) {
+      event.stopPropagation();
+      if (!confirm("Are you sure you want to delete this note?")) return;
 
       try {
-        await fetch(`${API}/api/delete-note`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/delete-note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            username: sessionUser,
-            password: sessionPass,
-            master_key: sessionKey,
-            note_id: currentNoteId
+            username: activeUser,
+            password: activePass,
+            master_key: activeKey,
+            note_id: noteId
           })
         });
 
-        notes = notes.filter(n => n.id !== currentNoteId);
-        if (notes.length === 0) {
-          createNewNote();
+        if (res.ok) {
+          loadedNotes = loadedNotes.filter(n => n.id !== noteId);
+          loadNotes(loadedNotes);
+          if (activeNoteId === noteId) resetNoteEditor();
         } else {
-          selectNote(notes[0].id);
+          alert("Failed to delete note.");
         }
-      } catch (e) {
-        alert("Failed to delete note.");
+      } catch (err) {
+        alert("Error deleting note: " + err.message);
       }
     }
 
-    function logout() {
-      sessionUser = "";
-      sessionPass = "";
-      sessionKey = "";
-      currentNoteId = null;
-      notes = [];
-      document.getElementById("notepadScreen").classList.add("hidden");
-      document.getElementById("notepadScreen").classList.remove("flex");
-      document.getElementById("authContainer").classList.remove("hidden");
-      document.getElementById("formSection").classList.remove("hidden");
-      document.getElementById("tabContainer").classList.remove("hidden");
-      document.getElementById("keyModal").classList.add("hidden");
-      document.getElementById("passInput").value = "";
-      document.getElementById("masterKeyInput").value = "";
-      setMode("login");
+    function handleLogout() {
+      activeUser = "";
+      activePass = "";
+      activeKey = "";
+      activeNoteId = null;
+      document.getElementById('vaultSection').classList.add('hidden');
+      document.getElementById('authSection').classList.remove('hidden');
+      resetNoteEditor();
     }
   </script>
 </body>
