@@ -4,15 +4,13 @@ import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from engine import HybridVaultEngine
 import db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initializes Turso database tables over HTTP if credentials exist
+    # Initializes Turso tables if credentials exist
     if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
         try:
             db.init_db()
@@ -198,29 +196,3 @@ def delete_note(req: DeleteNoteReq):
 
     db.delete_user_note(req.username, req.note_id)
     return {"status": "deleted"}
-
-# --- Root & Frontend Serving Routes ---
-
-@app.get("/", response_class=HTMLResponse)
-def serve_root():
-    possible_paths = [
-        os.path.join(os.getcwd(), "static", "index.html"),
-        os.path.join(os.path.dirname(__file__), "static", "index.html"),
-        os.path.join(os.getcwd(), "public", "index.html"),
-        os.path.join(os.path.dirname(__file__), "public", "index.html")
-    ]
-    for path in possible_paths:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-
-    return HTMLResponse(
-        content="<h2>PQC Vault Backend Online</h2><p>API is active. Open <a href='/docs'>/docs</a> to view available endpoints.</p>"
-    )
-
-# Mount asset directory if present
-for folder_name in ["static", "public"]:
-    folder_path = os.path.join(os.path.dirname(__file__), folder_name)
-    if os.path.exists(folder_path):
-        app.mount(f"/{folder_name}", StaticFiles(directory=folder_path), name=folder_name)
-        break
