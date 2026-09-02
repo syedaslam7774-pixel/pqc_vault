@@ -5,18 +5,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from engine import HybridVaultEngine
 import db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Only try to init if credentials are present
+    # Initializes Turso tables if credentials exist
     if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
         try:
             db.init_db()
         except Exception as e:
-            print(f"Warning: db init failed: {e}")
+            print(f"Warning: Database initialization skipped or failed: {e}")
     yield
 
 app = FastAPI(title="Post-Quantum Cross-Device Notepad", lifespan=lifespan)
@@ -68,6 +69,8 @@ class DeleteNoteReq(BaseModel):
     master_key: str
     note_id: str
 
+# --- API Endpoints ---
+
 @app.post("/api/check-user")
 def check_user(req: CheckUserReq):
     return {"exists": db.user_exists(req.username)}
@@ -79,6 +82,7 @@ def register_user(req: RegisterReq):
 
     keys = HybridVaultEngine.generate_user_keypair()
 
+    # Encrypt password with random salt and ephemeral hybrid keys
     encrypted_pass_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=keys["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=keys["public_keys"]["ml_kem_pub"],
@@ -195,6 +199,15 @@ def delete_note(req: DeleteNoteReq):
     db.delete_user_note(req.username, req.note_id)
     return {"status": "deleted"}
 
-# Serve static files only locally (Vercel routes static assets automatically)
-if not os.environ.get("VERCEL") and os.path.exists("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# --- Frontend Serving Routes ---
+
+@app.get("/")
+def serve_index():
+    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"status": "online", "message": "PQC Vault API is running"}
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
