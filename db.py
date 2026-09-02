@@ -3,24 +3,18 @@ import time
 import requests
 from typing import Optional, Dict, Any, List
 
-# Convert libsql:// to https:// for the Turso HTTP API
-RAW_URL = os.environ.get(
-    "TURSO_DATABASE_URL", 
-    "libsql://pql-vault-syed44.aws-ap-south-1.turso.io"
-)
+RAW_URL = os.environ.get("TURSO_DATABASE_URL", "")
 TURSO_HTTP_URL = RAW_URL.replace("libsql://", "https://").rstrip("/") + "/v2/pipeline"
-
-TURSO_AUTH_TOKEN = os.environ.get(
-    "TURSO_AUTH_TOKEN", 
-    "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODgwMTIwNDgsImlkIjoiMDFhMDRkZDEtMmYwMS03NDhiLWEyYzAtYTVhN2IxODAzNzM3Iiwia2lkIjoicFoxT0RqUVF1WDNyZGRsWnJaZzRpZEhZQWk4amt1TzlzT082SDY4QVhxcyIsInJpZCI6IjJlYmZjYTQ0LTVmM2UtNGNkMy1hMjA2LTYyZTk4MmZlNDhhYiJ9.srck7gngFnXgqBkB7cy9l4-i99zb-pu7uIeuAp19befeErWATImrI96QV6jE5dfA6BDIhoW9KmvQF0yn_5gaAg"
-)
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 
 def execute_query(sql: str, args: list = None) -> list:
     """Executes SQL statements over Turso's secure HTTP API."""
+    if not TURSO_HTTP_URL or not TURSO_AUTH_TOKEN:
+        raise RuntimeError("Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN environment variable.")
+
     if args is None:
         args = []
 
-    # Format arguments for Turso HTTP Pipeline
     formatted_args = []
     for arg in args:
         if isinstance(arg, int):
@@ -59,11 +53,7 @@ def execute_query(sql: str, args: list = None) -> list:
     if results and "response" in results[0]:
         exec_result = results[0]["response"].get("result", {})
         rows = exec_result.get("rows", [])
-        # Extract row values
-        parsed_rows = []
-        for r in rows:
-            parsed_rows.append([col.get("value") for col in r])
-        return parsed_rows
+        return [[col.get("value") for col in r] for r in rows]
     return []
 
 def init_db():
@@ -95,8 +85,6 @@ def init_db():
             FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
         )
     """)
-
-# --- User Database Operations ---
 
 def user_exists(username: str) -> bool:
     rows = execute_query("SELECT 1 FROM users WHERE username = ?", [username])
@@ -144,8 +132,6 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
             "ciphertext": row[7]
         }
     }
-
-# --- Note Database Operations ---
 
 def save_user_note(
     username: str,

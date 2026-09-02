@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,10 +9,17 @@ from pydantic import BaseModel
 from engine import HybridVaultEngine
 import db
 
-# Initialize the database and create tables
-db.init_db()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Only try to init if credentials are present
+    if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
+        try:
+            db.init_db()
+        except Exception as e:
+            print(f"Warning: db init failed: {e}")
+    yield
 
-app = FastAPI(title="Post-Quantum Cross-Device Notepad")
+app = FastAPI(title="Post-Quantum Cross-Device Notepad", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,7 +79,6 @@ def register_user(req: RegisterReq):
 
     keys = HybridVaultEngine.generate_user_keypair()
 
-    # Encrypt password with random salt
     encrypted_pass_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=keys["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=keys["public_keys"]["ml_kem_pub"],
@@ -89,7 +96,6 @@ def register_user(req: RegisterReq):
         ciphertext=encrypted_pass_packet["ciphertext"]
     )
 
-    # Return unsalted, raw master keypair to the user
     return {
         "status": "registered",
         "username": req.username,
@@ -189,6 +195,6 @@ def delete_note(req: DeleteNoteReq):
     db.delete_user_note(req.username, req.note_id)
     return {"status": "deleted"}
 
-os.makedirs("static", exist_ok=True)
-if os.path.exists("static") and not os.environ.get("VERCEL"):
+# Serve static files only locally (Vercel routes static assets automatically)
+if not os.environ.get("VERCEL") and os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
