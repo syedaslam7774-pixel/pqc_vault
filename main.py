@@ -67,6 +67,12 @@ class DeleteNoteReq(BaseModel):
     master_key: str
     note_id: str
 
+# --- Health & Root Endpoint ---
+
+@app.get("/")
+def root():
+    return {"status": "online", "message": "PQC Vault API is running"}
+
 # --- API Endpoints ---
 
 @app.post("/api/check-user")
