@@ -4,8 +4,6 @@ import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from engine import HybridVaultEngine
 import db
@@ -198,16 +196,3 @@ def delete_note(req: DeleteNoteReq):
 
     db.delete_user_note(req.username, req.note_id)
     return {"status": "deleted"}
-
-# --- Frontend Serving Routes ---
-
-@app.get("/")
-def serve_index():
-    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"status": "online", "message": "PQC Vault API is running"}
-
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
