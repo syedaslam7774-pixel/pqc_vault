@@ -1,7 +1,8 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": "/api/index.py"
     },
     {
@@ -9,8 +10,8 @@
       "destination": "/static/index.html"
     },
     {
-      "source": "/(.*)",
-      "destination": "/static/$1"
+      "source": "/:path*",
+      "destination": "/static/:path*"
     }
   ]
 }
