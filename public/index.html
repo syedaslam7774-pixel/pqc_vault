@@ -33,7 +33,7 @@
     <div id="formSection" class="space-y-4">
       <div>
         <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Username</label>
-        <input id="userInput" type="text" oninput="checkDeviceState()" onblur="checkDeviceState()" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter username" />
+        <input id="userInput" type="text" oninput="checkDeviceState()" onchange="checkDeviceState()" onblur="checkDeviceState()" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter username" />
       </div>
 
       <div>
@@ -41,13 +41,10 @@
         <input id="passInput" type="password" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter password" />
       </div>
 
-      <!-- MASTER KEY FIELD (Visible automatically on any new/unrecognized device) -->
-      <div id="masterKeyContainer">
-        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1 flex items-center justify-between">
-          <span>Master Key (Required for new device)</span>
-          <span class="text-[10px] text-gray-400 lowercase">paste json key</span>
-        </label>
-        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder='{"x25519_priv": "...", "ml_kem_priv": "..."}'></textarea>
+      <!-- MASTER KEY FIELD (Only appears if this device DOES NOT have the key saved) -->
+      <div id="masterKeyContainer" class="hidden">
+        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Enter Master Key</label>
+        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder='Paste your master key here'></textarea>
       </div>
 
       <button id="actionBtn" onclick="handleSubmit()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg">
@@ -160,23 +157,24 @@
       }
     }
 
+    // Checks if THIS device already has the key stored for this username
     function checkDeviceState() {
       if (currentMode === "register") return;
       const username = document.getElementById("userInput").value.trim();
       const container = document.getElementById("masterKeyContainer");
 
       if (!username) {
-        // If username empty, show the master key box by default so new devices are never locked out
-        container.classList.remove("hidden");
+        container.classList.add("hidden");
         return;
       }
 
       const savedKey = localStorage.getItem(`vault_master_key_${username}`);
       if (savedKey) {
-        // Device is recognized and already has key saved
+        // Stored locally -> Hide box completely
         container.classList.add("hidden");
+        document.getElementById("masterKeyInput").value = "";
       } else {
-        // Unrecognized user on this device: display the master key box
+        // NOT stored locally -> Show box so user can enter the master key
         container.classList.remove("hidden");
       }
     }
@@ -209,6 +207,7 @@
           sessionPass = password;
           sessionKey = cleanKeyStr;
 
+          // Save locally on this device
           localStorage.setItem(`vault_master_key_${username}`, cleanKeyStr);
           localStorage.setItem("vault_last_active_user", username);
 
@@ -220,19 +219,19 @@
           alert("Network error during registration: " + err.message);
         }
       } else {
-        // 1. First check local storage for this device
+        // 1. Look for key in local storage
         let masterKey = localStorage.getItem(`vault_master_key_${username}`);
         
-        // 2. If not stored locally, read from input box
+        // 2. If not in local storage, read it from the input box
         if (!masterKey) {
           masterKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
         }
 
-        // 3. If still missing, show the box and warn user
+        // 3. If still empty, make sure the box is visible and ask user to paste it
         if (!masterKey) {
           document.getElementById("masterKeyContainer").classList.remove("hidden");
           document.getElementById("masterKeyInput").focus();
-          return alert("New device detected. Please paste your Master Key to authorize this device.");
+          return alert("Please enter your Master Key to authorize this device.");
         }
 
         try {
@@ -244,7 +243,7 @@
           const loginData = await loginRes.json();
 
           if (loginRes.ok) {
-            // Persist the key on this new phone/browser so it becomes an authorized device
+            // Once verified, save it to this new device permanently
             localStorage.setItem(`vault_master_key_${username}`, masterKey);
             localStorage.setItem("vault_last_active_user", username);
             
@@ -254,7 +253,7 @@
             notes = loginData.notes || [];
             openNotepad(username);
           } else {
-            alert(loginData.detail || "Authentication Failed. Check your password or master key.");
+            alert(loginData.detail || "Authentication failed. Check your password or master key.");
           }
         } catch (err) {
           alert("Network error during login: " + err.message);
@@ -421,6 +420,7 @@
       }
     }
 
+    // 🔒 Lock: Keeps master key in local storage, clears password, returns to login
     function lockVault() {
       const lockedUser = sessionUser;
       sessionPass = "";
@@ -440,10 +440,11 @@
       document.getElementById("userInput").value = lockedUser;
       document.getElementById("passInput").value = "";
       setMode("login");
-      checkDeviceState();
+      checkDeviceState(); // Master key box will be hidden because key is already stored
       document.getElementById("passInput").focus();
     }
 
+    // Logout: Clears local device key storage completely
     function logout() {
       if (sessionUser) {
         localStorage.removeItem(`vault_master_key_${sessionUser}`);
