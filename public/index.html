@@ -41,7 +41,7 @@
         <input id="passInput" type="password" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter password" />
       </div>
 
-      <!-- MASTER KEY FIELD (Hidden by default; only shown if username has NO key saved on this device) -->
+      <!-- MASTER KEY FIELD -->
       <div id="masterKeyContainer" class="hidden">
         <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Enter the master key</label>
         <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder="Enter the master key"></textarea>
@@ -199,12 +199,12 @@
 
           const cleanKeyStr = cleanMasterKey(regData.master_key);
 
-          // Save credentials in memory
+          // Save credentials in active session memory
           sessionUser = username;
           sessionPass = password;
           sessionKey = cleanKeyStr;
 
-          // Permanently save master key and mark this user on the device
+          // Save to persistent storage for device binding
           localStorage.setItem(`vault_master_key_${username}`, cleanKeyStr);
           localStorage.setItem("vault_last_active_user", username);
 
@@ -235,7 +235,6 @@
           const loginData = await loginRes.json();
 
           if (loginRes.ok) {
-            // Keep master key saved for future logins on this device
             localStorage.setItem(`vault_master_key_${username}`, masterKey);
             localStorage.setItem("vault_last_active_user", username);
             
@@ -412,18 +411,16 @@
       }
     }
 
-    // 🔒 Lock: Keeps master key stored permanently, clears password/decrypted text
+    // 🔒 Lock: Keeps master key saved on device, wipes password and note text, asks only for password
     function lockVault() {
       const lockedUser = sessionUser;
       sessionPass = "";
       currentNoteId = null;
       notes = [];
 
-      // Clear editor inputs
       document.getElementById("noteTitle").value = "";
       document.getElementById("noteText").value = "";
 
-      // Switch back to login form
       document.getElementById("notepadScreen").classList.add("hidden");
       document.getElementById("notepadScreen").classList.remove("flex");
       document.getElementById("authContainer").classList.remove("hidden");
@@ -431,29 +428,41 @@
       document.getElementById("tabContainer").classList.remove("hidden");
       document.getElementById("keyModal").classList.add("hidden");
 
-      // Autofill username and focus password field
       document.getElementById("userInput").value = lockedUser;
       document.getElementById("passInput").value = "";
       setMode("login");
-      checkDeviceState(); // Ensures master key input stays hidden since it is saved
+      checkDeviceState();
       document.getElementById("passInput").focus();
     }
 
+    // Full Logout: Purges persistent device master key, requiring manual key entry on next login
     function logout() {
+      if (sessionUser) {
+        localStorage.removeItem(`vault_master_key_${sessionUser}`);
+      }
+      localStorage.removeItem("vault_last_active_user");
+
       sessionUser = "";
       sessionPass = "";
       sessionKey = "";
       currentNoteId = null;
       notes = [];
+
+      document.getElementById("userInput").value = "";
+      document.getElementById("passInput").value = "";
+      document.getElementById("masterKeyInput").value = "";
+      document.getElementById("noteTitle").value = "";
+      document.getElementById("noteText").value = "";
+
       document.getElementById("notepadScreen").classList.add("hidden");
       document.getElementById("notepadScreen").classList.remove("flex");
       document.getElementById("authContainer").classList.remove("hidden");
       document.getElementById("formSection").classList.remove("hidden");
       document.getElementById("tabContainer").classList.remove("hidden");
       document.getElementById("keyModal").classList.add("hidden");
-      document.getElementById("passInput").value = "";
-      document.getElementById("masterKeyInput").value = "";
+
       setMode("login");
+      document.getElementById("masterKeyContainer").classList.remove("hidden");
     }
   </script>
 </body>
