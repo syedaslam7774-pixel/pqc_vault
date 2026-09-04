@@ -10,12 +10,14 @@ import db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initializes Turso tables if credentials exist
+    # Verify Turso credentials
     if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
         try:
             db.init_db()
         except Exception as e:
-            print(f"Warning: Database initialization skipped or failed: {e}")
+            print(f"[Turso Init Warning] {e}")
+    else:
+        print("[Turso Error] Environment variables TURSO_DATABASE_URL or TURSO_AUTH_TOKEN are missing!")
     yield
 
 app = FastAPI(title="Post-Quantum Cross-Device Notepad", lifespan=lifespan)
@@ -30,16 +32,40 @@ app.add_middleware(
 
 def clean_and_parse_master_key(raw_input: str) -> dict:
     if not raw_input:
-        raise ValueError("Master key is empty.")
-    match = re.search(r'\{.*\}', raw_input, re.DOTALL)
-    clean_str = match.group(0) if match else raw_input.strip()
+        raise ValueError("Master key is completely empty.")
+    
+    # Clean mobile typography, escaped slashes, markdown backticks, and smart quotes
+    cleaned = (
+        str(raw_input)
+        .replace('“', '"')
+        .replace('”', '"')
+        .replace('‘', "'")
+        .replace('’', "'")
+        .replace('&quot;', '"')
+        .replace('\\"', '"')
+        .replace('`', '')
+        .strip()
+    )
+
+    # Extract JSON between curly braces
+    match = re.search(r'\{[\s\S]*\}', cleaned)
+    clean_str = match.group(0) if match else cleaned
+
     try:
         keys = json.loads(clean_str)
-        if "x25519_priv" in keys and "ml_kem_priv" in keys:
-            return keys
-    except Exception:
-        pass
-    raise ValueError("Could not find valid keypair inside the provided master key text.")
+    except Exception as e:
+        raise ValueError(f"JSON Decode Error: {e}. Payload was: {clean_str[:40]}...")
+
+    if not isinstance(keys, dict):
+        raise ValueError("Parsed master key is not a valid JSON dictionary.")
+
+    if "x25519_priv" not in keys or "ml_kem_priv" not in keys:
+        raise ValueError("JSON must contain both 'x25519_priv' and 'ml_kem_priv' keys.")
+
+    return {
+        "x25519_priv": str(keys["x25519_priv"]).strip(),
+        "ml_kem_priv": str(keys["ml_kem_priv"]).strip()
+    }
 
 class CheckUserReq(BaseModel):
     username: str
@@ -67,29 +93,29 @@ class DeleteNoteReq(BaseModel):
     master_key: str
     note_id: str
 
-# --- Health Endpoints ---
-
 @app.get("/")
 @app.get("/api")
 def root():
-    return {"status": "online", "message": "PQC Vault API is running"}
-
-# --- API Endpoints ---
+    return {"status": "online", "system": "Post-Quantum Cryptographic Vault"}
 
 @app.post("/check-user")
 @app.post("/api/check-user")
 def check_user(req: CheckUserReq):
-    return {"exists": db.user_exists(req.username)}
+    clean_user = req.username.strip().lower()
+    return {"exists": db.user_exists(clean_user)}
 
 @app.post("/register")
 @app.post("/api/register")
 def register_user(req: RegisterReq):
-    if db.user_exists(req.username):
-        raise HTTPException(status_code=400, detail="Username already exists.")
+    clean_user = req.username.strip().lower()
+    if not clean_user or not req.password:
+        raise HTTPException(status_code=400, detail="Username and password are required.")
+
+    if db.user_exists(clean_user):
+        raise HTTPException(status_code=400, detail=f"Username '{clean_user}' already exists.")
 
     keys = HybridVaultEngine.generate_user_keypair()
 
-    # Encrypt password with random salt and ephemeral hybrid keys
     encrypted_pass_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=keys["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=keys["public_keys"]["ml_kem_pub"],
@@ -97,7 +123,7 @@ def register_user(req: RegisterReq):
     )
 
     db.create_user(
-        username=req.username,
+        username=clean_user,
         x25519_pub=keys["public_keys"]["x25519_pub"],
         ml_kem_pub=keys["public_keys"]["ml_kem_pub"],
         ephemeral_x25519_pub=encrypted_pass_packet["ephemeral_x25519_pub"],
@@ -109,32 +135,40 @@ def register_user(req: RegisterReq):
 
     return {
         "status": "registered",
-        "username": req.username,
+        "username": clean_user,
         "master_key": json.dumps(keys["private_keys"])
     }
 
 @app.post("/login")
 @app.post("/api/login")
 def login_user(req: LoginReq):
-    user = db.get_user(req.username)
+    clean_user = req.username.strip().lower()
+    user = db.get_user(clean_user)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail=f"User '{clean_user}' not found in Turso database.")
 
+    # 1. Parse Key
     try:
         priv_keys = clean_and_parse_master_key(req.master_key)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Key Format Error: {str(e)}")
+
+    # 2. Decrypt Password Packet using Post-Quantum & Classical Engine
+    try:
         decrypted_pass_bytes = HybridVaultEngine.decrypt_payload(
             user_x25519_priv_hex=priv_keys["x25519_priv"],
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
             packet=user["encrypted_password_packet"]
         )
         stored_password = decrypted_pass_bytes.decode("utf-8")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Master Key provided.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Decryption Failure: Master key does not match this account ({str(e)}).")
 
     if stored_password != req.password:
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
-    raw_notes = db.get_user_notes(req.username)
+    # 3. Retrieve and Decrypt Notes
+    raw_notes = db.get_user_notes(clean_user)
     decrypted_notes = []
     for note in raw_notes:
         try:
@@ -155,14 +189,15 @@ def login_user(req: LoginReq):
 
     return {
         "status": "authenticated",
-        "username": req.username,
+        "username": clean_user,
         "notes": decrypted_notes
     }
 
 @app.post("/save-note")
 @app.post("/api/save-note")
 def save_note(req: SaveNoteReq):
-    user = db.get_user(req.username)
+    clean_user = req.username.strip().lower()
+    user = db.get_user(clean_user)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
@@ -173,8 +208,8 @@ def save_note(req: SaveNoteReq):
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
             packet=user["encrypted_password_packet"]
         ).decode("utf-8")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Decryption error.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Decryption error: {str(e)}")
 
     if decrypted_pass != req.password:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -188,7 +223,7 @@ def save_note(req: SaveNoteReq):
     )
 
     db.save_user_note(
-        username=req.username,
+        username=clean_user,
         note_id=req.note_id,
         ephemeral_x25519_pub=encrypted_packet["ephemeral_x25519_pub"],
         pq_ciphertext=encrypted_packet["pq_ciphertext"],
@@ -202,9 +237,10 @@ def save_note(req: SaveNoteReq):
 @app.post("/delete-note")
 @app.post("/api/delete-note")
 def delete_note(req: DeleteNoteReq):
-    user = db.get_user(req.username)
+    clean_user = req.username.strip().lower()
+    user = db.get_user(clean_user)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    db.delete_user_note(req.username, req.note_id)
+    db.delete_user_note(clean_user, req.note_id)
     return {"status": "deleted"}
