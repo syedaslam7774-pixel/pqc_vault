@@ -43,8 +43,8 @@
 
       <!-- MASTER KEY FIELD -->
       <div id="masterKeyContainer" class="hidden">
-        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Enter Master Key</label>
-        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder="Paste your master key JSON here..."></textarea>
+        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Master Key</label>
+        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder="Enter a master key"></textarea>
       </div>
 
       <button id="actionBtn" onclick="handleSubmit()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg">
@@ -222,7 +222,6 @@
           alert("Registration Error: " + err.message);
         }
       } else {
-        // Explicitly prioritize the manually entered/pasted text in the box
         const inputKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
         const localKey = localStorage.getItem(`vault_master_key_${username}`);
         const masterKey = inputKey || localKey;
@@ -230,7 +229,7 @@
         if (!masterKey) {
           document.getElementById("masterKeyContainer").classList.remove("hidden");
           document.getElementById("masterKeyInput").focus();
-          return alert("Master key required for this device. Please paste it into the box.");
+          return alert("Enter the master key to authorize this device.");
         }
 
         try {
