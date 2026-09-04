@@ -33,7 +33,7 @@
     <div id="formSection" class="space-y-4">
       <div>
         <label class="block text-xs uppercase tracking-wider text-gray-400 mb-1">Username</label>
-        <input id="userInput" type="text" oninput="checkDeviceState()" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter username" />
+        <input id="userInput" type="text" oninput="checkDeviceState()" onblur="checkDeviceState()" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter username" />
       </div>
 
       <div>
@@ -41,10 +41,13 @@
         <input id="passInput" type="password" class="w-full bg-black/50 border border-gray-800 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-cyan-500" placeholder="Enter password" />
       </div>
 
-      <!-- MASTER KEY FIELD -->
-      <div id="masterKeyContainer" class="hidden">
-        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1">Enter the master key</label>
-        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder="Enter the master key"></textarea>
+      <!-- MASTER KEY FIELD (Visible automatically on any new/unrecognized device) -->
+      <div id="masterKeyContainer">
+        <label class="block text-xs uppercase tracking-wider text-amber-400 mb-1 flex items-center justify-between">
+          <span>Master Key (Required for new device)</span>
+          <span class="text-[10px] text-gray-400 lowercase">paste json key</span>
+        </label>
+        <textarea id="masterKeyInput" rows="3" class="w-full bg-black/60 border border-amber-800/70 focus:border-amber-500 rounded-lg p-2.5 text-xs mono text-cyan-200 focus:outline-none" placeholder='{"x25519_priv": "...", "ml_kem_priv": "..."}'></textarea>
       </div>
 
       <button id="actionBtn" onclick="handleSubmit()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-3 rounded-lg text-sm transition shadow-lg">
@@ -131,8 +134,8 @@
       const lastUser = localStorage.getItem("vault_last_active_user");
       if (lastUser) {
         document.getElementById("userInput").value = lastUser;
-        checkDeviceState();
       }
+      checkDeviceState();
     });
 
     function setMode(mode) {
@@ -163,14 +166,17 @@
       const container = document.getElementById("masterKeyContainer");
 
       if (!username) {
-        container.classList.add("hidden");
+        // If username empty, show the master key box by default so new devices are never locked out
+        container.classList.remove("hidden");
         return;
       }
 
       const savedKey = localStorage.getItem(`vault_master_key_${username}`);
       if (savedKey) {
+        // Device is recognized and already has key saved
         container.classList.add("hidden");
       } else {
+        // Unrecognized user on this device: display the master key box
         container.classList.remove("hidden");
       }
     }
@@ -199,12 +205,10 @@
 
           const cleanKeyStr = cleanMasterKey(regData.master_key);
 
-          // Save credentials in active session memory
           sessionUser = username;
           sessionPass = password;
           sessionKey = cleanKeyStr;
 
-          // Save to persistent storage for device binding
           localStorage.setItem(`vault_master_key_${username}`, cleanKeyStr);
           localStorage.setItem("vault_last_active_user", username);
 
@@ -216,14 +220,19 @@
           alert("Network error during registration: " + err.message);
         }
       } else {
+        // 1. First check local storage for this device
         let masterKey = localStorage.getItem(`vault_master_key_${username}`);
         
+        // 2. If not stored locally, read from input box
         if (!masterKey) {
           masterKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
         }
 
+        // 3. If still missing, show the box and warn user
         if (!masterKey) {
-          return alert("Please enter the master key in the box to authorize this device.");
+          document.getElementById("masterKeyContainer").classList.remove("hidden");
+          document.getElementById("masterKeyInput").focus();
+          return alert("New device detected. Please paste your Master Key to authorize this device.");
         }
 
         try {
@@ -235,6 +244,7 @@
           const loginData = await loginRes.json();
 
           if (loginRes.ok) {
+            // Persist the key on this new phone/browser so it becomes an authorized device
             localStorage.setItem(`vault_master_key_${username}`, masterKey);
             localStorage.setItem("vault_last_active_user", username);
             
@@ -244,7 +254,7 @@
             notes = loginData.notes || [];
             openNotepad(username);
           } else {
-            alert(loginData.detail || "Authentication Failed. Please check your password or master key.");
+            alert(loginData.detail || "Authentication Failed. Check your password or master key.");
           }
         } catch (err) {
           alert("Network error during login: " + err.message);
@@ -411,7 +421,6 @@
       }
     }
 
-    // 🔒 Lock: Keeps master key saved on device, wipes password and note text, asks only for password
     function lockVault() {
       const lockedUser = sessionUser;
       sessionPass = "";
@@ -435,7 +444,6 @@
       document.getElementById("passInput").focus();
     }
 
-    // Full Logout: Purges persistent device master key, requiring manual key entry on next login
     function logout() {
       if (sessionUser) {
         localStorage.removeItem(`vault_master_key_${sessionUser}`);
@@ -462,7 +470,7 @@
       document.getElementById("keyModal").classList.add("hidden");
 
       setMode("login");
-      document.getElementById("masterKeyContainer").classList.remove("hidden");
+      checkDeviceState();
     }
   </script>
 </body>
