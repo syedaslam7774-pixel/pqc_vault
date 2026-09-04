@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -10,14 +11,11 @@ import db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Verify Turso credentials
     if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
         try:
             db.init_db()
         except Exception as e:
             print(f"[Turso Init Warning] {e}")
-    else:
-        print("[Turso Error] Environment variables TURSO_DATABASE_URL or TURSO_AUTH_TOKEN are missing!")
     yield
 
 app = FastAPI(title="Post-Quantum Cross-Device Notepad", lifespan=lifespan)
@@ -30,11 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def compute_key_fingerprint(x25519_priv: str, ml_kem_priv: str) -> str:
+    """Computes a strict SHA-256 checksum over the raw private key material."""
+    payload = f"{x25519_priv.strip()}:{ml_kem_priv.strip()}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
 def clean_and_parse_master_key(raw_input: str) -> dict:
     if not raw_input:
-        raise ValueError("Master key is completely empty.")
-    
-    # Clean mobile typography, escaped slashes, markdown backticks, and smart quotes
+        raise ValueError("Master key string is completely empty.")
+
     cleaned = (
         str(raw_input)
         .replace('“', '"')
@@ -47,24 +49,35 @@ def clean_and_parse_master_key(raw_input: str) -> dict:
         .strip()
     )
 
-    # Extract JSON between curly braces
     match = re.search(r'\{[\s\S]*\}', cleaned)
     clean_str = match.group(0) if match else cleaned
 
     try:
         keys = json.loads(clean_str)
     except Exception as e:
-        raise ValueError(f"JSON Decode Error: {e}. Payload was: {clean_str[:40]}...")
+        raise ValueError(f"Corrupted or invalid JSON format: {e}")
 
     if not isinstance(keys, dict):
-        raise ValueError("Parsed master key is not a valid JSON dictionary.")
+        raise ValueError("Master key must be a valid JSON dictionary.")
 
     if "x25519_priv" not in keys or "ml_kem_priv" not in keys:
-        raise ValueError("JSON must contain both 'x25519_priv' and 'ml_kem_priv' keys.")
+        raise ValueError("Master key is missing required cryptographic key pairs.")
+
+    x25519 = str(keys["x25519_priv"]).strip()
+    ml_kem = str(keys["ml_kem_priv"]).strip()
+
+    if not re.fullmatch(r'[0-9a-fA-F]+', x25519):
+        raise ValueError("x25519_priv contains invalid characters. Must be strict hexadecimal.")
+    if not re.fullmatch(r'[0-9a-fA-F]+', ml_kem):
+        raise ValueError("ml_kem_priv contains invalid characters. Must be strict hexadecimal.")
+
+    if len(x25519) != 64:
+        raise ValueError(f"x25519_priv length tampered. Expected 64 hex chars, got {len(x25519)}.")
 
     return {
-        "x25519_priv": str(keys["x25519_priv"]).strip(),
-        "ml_kem_priv": str(keys["ml_kem_priv"]).strip()
+        "x25519_priv": x25519,
+        "ml_kem_priv": ml_kem,
+        "fingerprint": compute_key_fingerprint(x25519, ml_kem)
     }
 
 class CheckUserReq(BaseModel):
@@ -101,8 +114,7 @@ def root():
 @app.post("/check-user")
 @app.post("/api/check-user")
 def check_user(req: CheckUserReq):
-    clean_user = req.username.strip().lower()
-    return {"exists": db.user_exists(clean_user)}
+    return {"exists": db.user_exists(req.username.strip().lower())}
 
 @app.post("/register")
 @app.post("/api/register")
@@ -115,11 +127,20 @@ def register_user(req: RegisterReq):
         raise HTTPException(status_code=400, detail=f"Username '{clean_user}' already exists.")
 
     keys = HybridVaultEngine.generate_user_keypair()
+    x25519_priv = keys["private_keys"]["x25519_priv"]
+    ml_kem_priv = keys["private_keys"]["ml_kem_priv"]
+
+    key_fingerprint = compute_key_fingerprint(x25519_priv, ml_kem_priv)
+
+    verification_payload = json.dumps({
+        "pass": req.password,
+        "key_fingerprint": key_fingerprint
+    })
 
     encrypted_pass_packet = HybridVaultEngine.encrypt_payload(
         recipient_x25519_pub_hex=keys["public_keys"]["x25519_pub"],
         recipient_ml_kem_pub_hex=keys["public_keys"]["ml_kem_pub"],
-        plaintext=req.password.encode("utf-8")
+        plaintext=verification_payload.encode("utf-8")
     )
 
     db.create_user(
@@ -145,43 +166,43 @@ def login_user(req: LoginReq):
     clean_user = req.username.strip().lower()
     user = db.get_user(clean_user)
     if not user:
-        raise HTTPException(status_code=404, detail=f"User '{clean_user}' not found in Turso database.")
+        raise HTTPException(status_code=404, detail=f"User '{clean_user}' not found.")
 
-    # 1. Parse Key
     try:
         priv_keys = clean_and_parse_master_key(req.master_key)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Key Format Error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Tampered Key Detected: {str(e)}")
 
-    # 2. Decrypt Password Packet using Post-Quantum & Classical Engine
     try:
-        decrypted_pass_bytes = HybridVaultEngine.decrypt_payload(
+        decrypted_bytes = HybridVaultEngine.decrypt_payload(
             user_x25519_priv_hex=priv_keys["x25519_priv"],
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
             packet=user["encrypted_password_packet"]
         )
-        stored_password = decrypted_pass_bytes.decode("utf-8")
+        decrypted_payload = json.loads(decrypted_bytes.decode("utf-8"))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Decryption Failure: Master key does not match this account ({str(e)}).")
+        raise HTTPException(status_code=400, detail="Master key invalid: Cryptographic decapsulation failed.")
 
-    if stored_password != req.password:
+    if decrypted_payload.get("key_fingerprint") != priv_keys["fingerprint"]:
+        raise HTTPException(status_code=401, detail="Key integrity failure: Master key has been modified.")
+
+    if decrypted_payload.get("pass") != req.password:
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
-    # 3. Retrieve and Decrypt Notes
     raw_notes = db.get_user_notes(clean_user)
     decrypted_notes = []
     for note in raw_notes:
         try:
-            decrypted_bytes = HybridVaultEngine.decrypt_payload(
+            note_bytes = HybridVaultEngine.decrypt_payload(
                 user_x25519_priv_hex=priv_keys["x25519_priv"],
                 user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
                 packet=note["encrypted_packet"]
             )
-            raw_payload = json.loads(decrypted_bytes.decode("utf-8"))
+            raw_data = json.loads(note_bytes.decode("utf-8"))
             decrypted_notes.append({
                 "id": note["note_id"],
-                "title": raw_payload.get("title", "Untitled Note"),
-                "content": raw_payload.get("content", ""),
+                "title": raw_data.get("title", "Untitled Note"),
+                "content": raw_data.get("content", ""),
                 "updated_at": note.get("updated_at")
             })
         except Exception:
@@ -203,16 +224,17 @@ def save_note(req: SaveNoteReq):
 
     try:
         priv_keys = clean_and_parse_master_key(req.master_key)
-        decrypted_pass = HybridVaultEngine.decrypt_payload(
+        decrypted_bytes = HybridVaultEngine.decrypt_payload(
             user_x25519_priv_hex=priv_keys["x25519_priv"],
             user_ml_kem_priv_hex=priv_keys["ml_kem_priv"],
             packet=user["encrypted_password_packet"]
-        ).decode("utf-8")
+        )
+        decrypted_payload = json.loads(decrypted_bytes.decode("utf-8"))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Decryption error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Authentication error: {str(e)}")
 
-    if decrypted_pass != req.password:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    if decrypted_payload.get("pass") != req.password or decrypted_payload.get("key_fingerprint") != priv_keys["fingerprint"]:
+        raise HTTPException(status_code=401, detail="Unauthorized: Key or password mismatch.")
 
     payload_json = json.dumps({"title": req.title, "content": req.content})
 

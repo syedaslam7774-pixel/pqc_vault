@@ -222,11 +222,10 @@
           alert("Registration Error: " + err.message);
         }
       } else {
-        let masterKey = localStorage.getItem(`vault_master_key_${username}`);
-        
-        if (!masterKey) {
-          masterKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
-        }
+        // Explicitly prioritize the manually entered/pasted text in the box
+        const inputKey = cleanMasterKey(document.getElementById("masterKeyInput").value);
+        const localKey = localStorage.getItem(`vault_master_key_${username}`);
+        const masterKey = inputKey || localKey;
 
         if (!masterKey) {
           document.getElementById("masterKeyContainer").classList.remove("hidden");
